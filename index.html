@@ -2443,7 +2443,11 @@ const ReadingLog = {
     },
 
     resolveStudentBrowserStaticUrlV1183_(value, baseUrl) {
-      try { return new URL(String(value || ''), String(baseUrl || '')).href; }
+      try {
+        const pageUrl = window.location && window.location.href ? window.location.href : '';
+        const resolvedBaseUrl = new URL(String(baseUrl || ''), pageUrl).href;
+        return new URL(String(value || ''), resolvedBaseUrl).href;
+      }
       catch (ignore) { return ''; }
     },
 
