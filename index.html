@@ -3685,7 +3685,17 @@ const ReadingLog = {
     filterBooks() {
       const input = document.getElementById('searchInput');
       const q = input ? String(input.value || '').trim() : '';
-      if (q) this.showStudentSearchLoadingV1111_();
+      if (q) {
+        this.showStudentSearchLoadingV1111_();
+        // 일반 검색은 직접 일치 결과만 표시한다. 이전 검색·초기 목록을 남겨 두면
+        // 새 검색어와 무관한 책이 검색 결과처럼 보일 수 있으므로, 응답 전에는
+        // 명확한 진행 카드만 표시한다. 학과·키워드·페이지 이동 목록은 유지한다.
+        const root = document.getElementById('bookList');
+        if (root) {
+          root.innerHTML = '<div class="loading-card">새 검색 결과를 불러오는 중입니다.</div>';
+          root.setAttribute('aria-busy', 'true');
+        }
+      }
       // 진행 문구를 먼저 표시합니다. 60초 브라우저 캐시가 적중하면
       // loadBooksPage가 완료 문구를 즉시 그리므로 이 순서를 유지해야 합니다.
       this.setListHeaderV0913(
