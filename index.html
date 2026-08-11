@@ -1096,10 +1096,21 @@ button.recent-search-rank:hover{border-color:var(--brand);color:var(--brand)}
     return aliases.some(term => compact === normalize(term)) ? aliases : [];
   }
 
+  function strictRoleSearchText(value, term) {
+    let normalized = normalize(value);
+    if (normalize(term) === normalize('교사')) normalized = normalized.replace(/(?:외교사|교육사|종교사|교회사)/g, '');
+    return normalized;
+  }
+
+  function strictRoleTextScore(value, term, weight) {
+    const wanted = normalize(term);
+    if (!wanted || strictRoleSearchText(value, term).indexOf(wanted) === -1) return 0;
+    return weight + Math.round(weight * 0.85);
+  }
+
   function hasStrictRoleEvidence(record, terms) {
-    const evidence = [record.title].concat(record.keywordsTop5 || [], record.keywordsAll || []).join(' ');
-    const normalized = normalize(evidence);
-    return (terms || []).some(term => normalized.indexOf(normalize(term)) !== -1);
+    const evidence = [record.title].concat(record.keywordsTop5 || [], record.keywordsAll || []);
+    return (terms || []).some(term => evidence.some(value => strictRoleSearchText(value, term).indexOf(normalize(term)) !== -1));
   }
 
   function directScore(record, query) {
@@ -1115,7 +1126,9 @@ button.recent-search-rank:hover{border-color:var(--brand);color:var(--brand)}
       [(record.keywordsTop5 || []).concat(record.keywordsAll || []).join(' '), 58]
     ];
     return fields.reduce((score, field) => score + terms.reduce((sum, term) => {
-      return sum + exactTextScore(field[0], term, normalize(term), field[1]);
+      return sum + (roleTerms.length
+        ? strictRoleTextScore(field[0], term, field[1])
+        : exactTextScore(field[0], term, normalize(term), field[1]));
     }, 0), 0);
   }
 
