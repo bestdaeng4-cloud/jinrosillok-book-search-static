@@ -677,22 +677,22 @@ a.network-link:not(.is-disabled):hover{background:#e5f0fb;border-color:#7aa2c8}
   white-space:nowrap;
 }
 .hero-card-v0976 .hero-guidance-v0976{
-  border:1px solid #eadcca;
-  border-left:4px solid #d97812;
-  background:#fff7e9;
-  padding:16px 18px;
-  color:#423b31;
+  border:0;
+  border-top:1px solid var(--line);
+  background:transparent;
+  padding:14px 0 0;
+  color:var(--muted);
 }
 .hero-card-v0976 .hero-guidance-v0976 p{
   margin:0;
-  color:#423b31;
+  color:var(--muted);
   font-size:14px;
   line-height:1.75;
 }
 @media(max-width:700px){
   .hero-card.hero-card-v0976{padding:22px 18px;border-radius:22px}
   .hero-card-v0976 .hero-flow-v0976{margin:10px 0 17px;font-size:12px;line-height:1.65;white-space:normal}
-  .hero-card-v0976 .hero-guidance-v0976{padding:13px 14px}
+  .hero-card-v0976 .hero-guidance-v0976{padding:12px 0 0}
   .hero-card-v0976 .hero-guidance-v0976 p{font-size:12px;line-height:1.7}
 }
 
@@ -757,7 +757,7 @@ button.recent-search-rank:hover{border-color:var(--brand);color:var(--brand)}
 
 
   <script>
-    window.READINGLOG_APP_VERSION = "v1.1.69";
+    window.READINGLOG_APP_VERSION = "v1.1.70";
     window.READINGLOG_UPDATE_TIME = "2026-08-10 12:24:58";
     window.READINGLOG_AUTO_SEARCH_STATUS_PREFIX = "도서관자동화 검색어: ";
     window.READINGLOG_CLIENT_INDEX_PROBE = '';
@@ -836,7 +836,7 @@ button.recent-search-rank:hover{border-color:var(--brand);color:var(--brand)}
             <a id="seriesLink5" class="network-link is-hidden" href="#"><strong></strong><small></small></a>
           </nav>
           <div class="version-stack">
-            <span id="versionBadge" class="version-box">v1.1.69<br><small>업데이트 2026-08-10 12:24:58</small></span>
+            <span id="versionBadge" class="version-box">v1.1.70<br><small>업데이트 2026-08-10 12:24:58</small></span>
           </div>
         </div>
         <div id="libraryIdentity" class="library-identity">
@@ -1088,13 +1088,35 @@ button.recent-search-rank:hover{border-color:var(--brand);color:var(--brand)}
     return score;
   }
 
+  // 「교사」는 교육 분야 전체가 아니라 직업·역할 자체를 찾는 검색으로 취급합니다.
+  // 정적 화면과 Apps Script 화면의 직접 검색 기준을 동일하게 유지합니다.
+  function strictRoleTerms(query) {
+    const compact = normalize(query);
+    const aliases = ['교사', '교직', '교원', '교권', '교육자', '선생님'];
+    return aliases.some(term => compact === normalize(term)) ? aliases : [];
+  }
+
+  function hasStrictRoleEvidence(record, terms) {
+    const evidence = [record.title].concat(record.keywordsTop5 || [], record.keywordsAll || []).join(' ');
+    const normalized = normalize(evidence);
+    return (terms || []).some(term => normalized.indexOf(normalize(term)) !== -1);
+  }
+
   function directScore(record, query) {
     const q = text(query).trim().toLowerCase();
     const loose = normalize(q);
     if (!q || !loose) return 0;
-    return exactTextScore(record.title, q, loose, 90)
-      + exactTextScore([record.author, record.publisher].join(' '), q, loose, 42)
-      + exactTextScore(record.keywordsTop5.concat(record.keywordsAll).join(' '), q, loose, 58);
+    const roleTerms = strictRoleTerms(q);
+    if (roleTerms.length && !hasStrictRoleEvidence(record, roleTerms)) return 0;
+    const terms = roleTerms.length ? roleTerms : [q];
+    const fields = [
+      [record.title, 90],
+      [[record.author, record.publisher].join(' '), 42],
+      [(record.keywordsTop5 || []).concat(record.keywordsAll || []).join(' '), 58]
+    ];
+    return fields.reduce((score, field) => score + terms.reduce((sum, term) => {
+      return sum + exactTextScore(field[0], term, normalize(term), field[1]);
+    }, 0), 0);
   }
 
   function hasExact(values, target) {
@@ -1366,12 +1388,24 @@ button.recent-search-rank:hover{border-color:var(--brand);color:var(--brand)}
 
 </script>
 <script src="bootstrap.js"></script>
+<script src="public-site-config.js"></script>
 <script>
 (function (root) {
   'use strict';
 
   const bootstrap = root.READINGLOG_STATIC_BOOTSTRAP_V1190;
   if (!bootstrap || !bootstrap.shell || !bootstrap.initialPage) throw new Error('Static bootstrap is required');
+  // 정적 화면의 제목·안내·메뉴 문구는 도서 색인과 분리한다.
+  // public-site-config.js만 수정하면 검색 색인을 다시 만들 필요가 없다.
+  const publicConfig = root.READINGLOG_PUBLIC_SITE_CONFIG;
+  if (publicConfig && typeof publicConfig === 'object') {
+    if (publicConfig.settings && typeof publicConfig.settings === 'object') {
+      bootstrap.shell.settings = Object.assign({}, bootstrap.shell.settings || {}, publicConfig.settings);
+    }
+    if (Array.isArray(publicConfig.menus)) {
+      bootstrap.shell.menus = publicConfig.menus.map(menu => Object.assign({}, menu));
+    }
+  }
   if (root.ReadingLogBrowserStaticV1182 && typeof root.ReadingLogBrowserStaticV1182.attachRelated === 'function') {
     root.ReadingLogBrowserStaticV1182.attachRelated(bootstrap.initialPage.books || [], 3);
   }
@@ -3685,7 +3719,17 @@ const ReadingLog = {
     filterBooks() {
       const input = document.getElementById('searchInput');
       const q = input ? String(input.value || '').trim() : '';
-      if (q) this.showStudentSearchLoadingV1111_();
+      if (q) {
+        this.showStudentSearchLoadingV1111_();
+        // 일반 검색은 직접 일치 결과만 표시한다. 이전 검색·초기 목록을 남겨 두면
+        // 새 검색어와 무관한 책이 검색 결과처럼 보일 수 있으므로, 응답 전에는
+        // 명확한 진행 카드만 표시한다. 학과·키워드·페이지 이동 목록은 유지한다.
+        const root = document.getElementById('bookList');
+        if (root) {
+          root.innerHTML = '<div class="loading-card">새 검색 결과를 불러오는 중입니다.</div>';
+          root.setAttribute('aria-busy', 'true');
+        }
+      }
       // 진행 문구를 먼저 표시합니다. 60초 브라우저 캐시가 적중하면
       // loadBooksPage가 완료 문구를 즉시 그리므로 이 순서를 유지해야 합니다.
       this.setListHeaderV0913(
